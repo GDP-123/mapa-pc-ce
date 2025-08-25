@@ -1,55 +1,92 @@
 import streamlit as st
+import sqlite3
+import uuid
 
+# ===============================
+# Funções auxiliares para persistência
+# ===============================
+def init_db():
+    conn = sqlite3.connect("pontos.db")
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pontos (
+            map_id TEXT,
+            nome TEXT,
+            lat REAL,
+            lng REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def salvar_pontos(map_id, pontos):
+    conn = sqlite3.connect("pontos.db")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM pontos WHERE map_id=?", (map_id,))
+    for p in pontos:
+        cur.execute("INSERT INTO pontos VALUES (?, ?, ?, ?)", (map_id, p["nome"], p["lat"], p["lng"]))
+    conn.commit()
+    conn.close()
+
+def carregar_pontos(map_id):
+    conn = sqlite3.connect("pontos.db")
+    cur = conn.cursor()
+    cur.execute("SELECT nome, lat, lng FROM pontos WHERE map_id=?", (map_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return [{"nome": r[0], "lat": r[1], "lng": r[2]} for r in rows]
+
+# ===============================
+# App
+# ===============================
 st.set_page_config(page_title="Mapa", layout="wide")
-st.title("Mapa PC-CE")
+init_db()
 
-# Inicializa sessão para armazenar pontos
-if "pontos" not in st.session_state:
-    # cada ponto é um dict: {"nome": str, "lat": float, "lng": float}
-    st.session_state.pontos = []
+# Pega map_id da URL
+params = st.query_params
+map_id = params.get("map_id", [None])[0]
 
-# MENU LATERAL
-menu = st.sidebar.selectbox("Gerenciar Pontos", ["Visualizar", "Adicionar", "Alterar", "Deletar"])
+# Se não existir, cria um novo
+if not map_id:
+    map_id = str(uuid.uuid4())
+    st.query_params["map_id"] = map_id
 
-if menu == "Adicionar":
-    nome = st.text_input("Nome do ponto", "Novo ponto")
-    lat = st.number_input("Latitude", value=-3.7824, format="%.6f")
-    lng = st.number_input("Longitude", value=-38.5745, format="%.6f")
-    if st.button("Adicionar ponto"):
-        st.session_state.pontos.append({"nome": nome, "lat": lat, "lng": lng})
-        st.success(f"Ponto '{nome}' adicionado!")
+st.write(f"🗺️ Link compartilhável: {st.get_option('server.baseUrlPath')}/?map_id={map_id}")
 
-elif menu == "Alterar":
-    if st.session_state.pontos:
-        nomes = [p["nome"] for p in st.session_state.pontos]
-        selecionado = st.selectbox("Selecione o ponto para alterar", nomes)
-        ponto = next(p for p in st.session_state.pontos if p["nome"] == selecionado)
-        novo_nome = st.text_input("Novo nome", ponto["nome"])
-        nova_lat = st.number_input("Nova latitude", value=ponto["lat"])
-        nova_lng = st.number_input("Nova longitude", value=ponto["lng"])
-        if st.button("Atualizar ponto"):
-            ponto.update({"nome": novo_nome, "lat": nova_lat, "lng": nova_lng})
-            st.success(f"Ponto '{novo_nome}' atualizado!")
-    else:
-        st.info("Nenhum ponto cadastrado.")
+# Carregar pontos salvos
+pontos = carregar_pontos(map_id)
 
-elif menu == "Deletar":
-    if st.session_state.pontos:
-        nomes = [p["nome"] for p in st.session_state.pontos]
-        selecionado = st.selectbox("Selecione o ponto para deletar", nomes)
-        if st.button("Deletar ponto"):
-            st.session_state.pontos = [p for p in st.session_state.pontos if p["nome"] != selecionado]
-            st.success(f"Ponto '{selecionado}' deletado!")
-    else:
-        st.info("Nenhum ponto cadastrado.")
+# Sidebar de gerenciamento
+st.sidebar.title("Gerenciar Pontos")
+nome = st.sidebar.text_input("Nome do ponto")
+lat = st.sidebar.number_input("Latitude", format="%.6f")
+lng = st.sidebar.number_input("Longitude", format="%.6f")
 
-# ========================
-# MAPA COM TODOS OS PONTOS
-# ========================
-# Gera o HTML para o mapa
-pontos_js = ",\n".join(
-    f'{{lat: {p["lat"]}, lng: {p["lng"]}, nome: "{p["nome"]}"}}' for p in st.session_state.pontos
-)
+if st.sidebar.button("Adicionar ponto"):
+    pontos.append({"nome": nome, "lat": lat, "lng": lng})
+    salvar_pontos(map_id, pontos)
+
+if pontos:
+    st.sidebar.subheader("Pontos existentes")
+    for i, p in enumerate(pontos):
+        if st.sidebar.button(f"Excluir {p['nome']}", key=f"del_{i}"):
+            pontos.pop(i)
+            salvar_pontos(map_id, pontos)
+            st.rerun()
+
+# Renderizar mapa (HTML igual ao que você já tem)
+# (aqui só coloca o loop para adicionar os pontos)
+
+html_markers = ""
+for p in pontos:
+    html_markers += f"""
+    var marker = new google.maps.Marker({{
+        position: {{ lat: {p['lat']}, lng: {p['lng']} }},
+        map: map
+    }});
+    var label = new LabelOverlay(new google.maps.LatLng({p['lat']}, {p['lng']}), "{p['nome']}");
+    label.setMap(map);
+    """
 
 html_code = f"""
 <!DOCTYPE html>
@@ -58,10 +95,10 @@ html_code = f"""
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD06plaNz2fi0Sdj0aDPYWsoaVwRl3PxUU"></script>
     <script>
       function initMap() {{
+        var pos = {{ lat: -3.7824, lng: -38.5745 }};
         var map = new google.maps.Map(document.getElementById("map"), {{
-          center: {{lat: -3.7824, lng: -38.5745}},
+          center: pos,
           zoom: 12,
-          streetViewControl: true,
           gestureHandling: "greedy"
         }});
 
@@ -90,7 +127,7 @@ html_code = f"""
             const posPixel = overlayProjection.fromLatLngToDivPixel(this.position);
             if (this.div) {{
               this.div.style.left = posPixel.x - (this.div.offsetWidth / 2) + "px";
-              this.div.style.top = posPixel.y - 60 + "px";
+              this.div.style.top = posPixel.y - 40 + "px";
             }}
           }}
           onRemove() {{
@@ -101,13 +138,8 @@ html_code = f"""
           }}
         }}
 
-        // Adiciona todos os pontos do session_state
-        const pontos = [{pontos_js}];
-        pontos.forEach(p => {{
-          const marker = new google.maps.Marker({{position: {{lat: p.lat, lng: p.lng}}, map: map}});
-          const label = new LabelOverlay(new google.maps.LatLng(p.lat, p.lng), p.nome);
-          label.setMap(map);
-        }});
+        // Adiciona pontos
+        {html_markers}
       }}
     </script>
   </head>
