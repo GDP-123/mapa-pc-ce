@@ -195,10 +195,10 @@ if st.sidebar.button("➕ Adicionar ponto"):
     abrir_dialogo()
 
 # Limpando pontos
-if st.sidebar.button("🗑️ Limpar pontos"):
-    st.session_state.pontos = []
-    st.query_params.clear()
-    st.rerun()
+#if st.sidebar.button("🗑️ Limpar pontos"):
+#    st.session_state.pontos = []
+#    st.query_params.clear()
+#    st.rerun()
 
 # Exibir pontos
 if pontos:
@@ -290,3 +290,4 @@ html_code = f"""
 """
 
 components.html(html_code, height=700)
+
