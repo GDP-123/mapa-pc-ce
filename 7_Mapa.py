@@ -3,8 +3,7 @@ import streamlit.components.v1 as components
 import base64
 import json
 
-from streamlit import dialog as st_dialog
-
+from streamlit import dialog
 
 # ===============================
 # Configurações
@@ -89,7 +88,10 @@ def exibir_ponto_com_botoes(ponto, index):
         # Botão 2 - Editar (✏️)
         tooltip = "Editar"
         if st.button("✏️", key=f"edit_{index}", use_container_width=True,help=tooltip):
-            editar_ponto(index,ponto['nome'],ponto['lat'],ponto['lng'])
+            if ponto['tipo']=='ponto':
+                editar_ponto(index,ponto['nome'],ponto['lat'],ponto['lng'])
+            elif ponto['tipo']=='torre':
+                editar_torre(index,ponto['nome'],ponto['lat'],ponto['lng'],ponto['margem'],ponto['azimute'], ponto['distancia'])
     
     with coll3:
         # Botão 3 - Excluir (🗑️)
@@ -128,36 +130,6 @@ def novo_ponto():
                     "visivel": True,
                     "tipo": "ponto"
                 })
-                atualizar_url_e_session_state(pontos)
-                st.rerun()
-            else:
-                st.error("Preencha todos os campos corretamente!")
-    with col_btn2:
-        if st.button("❌ Cancelar", use_container_width=True):
-            st.rerun()
-
-@st.dialog("Editar Ponto")
-def editar_ponto(index,nome_old,lat_old,long_old):
-    nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
-    col1, col2 = st.columns(2)
-    with col1:
-        lat_modal = st.text_input("Latitude", value=lat_old, key="modal_lat")
-    with col2:
-        lng_modal = st.text_input("Longitude", value=long_old, key="modal_lng")
-
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("✅ Atualizar", use_container_width=True):
-            lat = validar_coordenada(lat_modal)
-            lng = validar_coordenada(lng_modal)
-            if lat is not None and lng is not None and nome_modal:
-                pontos[index] = {   
-                    "lat": lat,
-                    "lng": lng,
-                    "nome": nome_modal,
-                    "visivel": pontos[index].get("visivel", True),  # mantém visibilidade anterior
-                    "tipo": "ponto"
-                }
                 atualizar_url_e_session_state(pontos)
                 st.rerun()
             else:
@@ -208,6 +180,80 @@ def novo_antena():
     with col_btn2:
         if st.button("❌ Cancelar", use_container_width=True):
             st.rerun()
+
+@st.dialog("Editar Ponto")
+def editar_ponto(index,nome_old,lat_old,long_old):
+    nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
+    col1, col2 = st.columns(2)
+    with col1:
+        lat_modal = st.text_input("Latitude", value=lat_old, key="modal_lat")
+    with col2:
+        lng_modal = st.text_input("Longitude", value=long_old, key="modal_lng")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("✅ Atualizar", use_container_width=True):
+            lat = validar_coordenada(lat_modal)
+            lng = validar_coordenada(lng_modal)
+            if lat is not None and lng is not None and nome_modal:
+                pontos[index] = {   
+                    "lat": lat,
+                    "lng": lng,
+                    "nome": nome_modal,
+                    "visivel": pontos[index].get("visivel", True),  # mantém visibilidade anterior
+                    "tipo": "ponto"
+                }
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
+            else:
+                st.error("Preencha todos os campos corretamente!")
+    with col_btn2:
+        if st.button("❌ Cancelar", use_container_width=True):
+            st.rerun()
+
+@st.dialog("Editar Antena")
+def editar_torre(index,nome_old, lat_old, long_old,margem_old, azimute_old, distancia_old):
+
+    col01, col02 = st.columns(2)
+    with col01:
+        nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
+    with col02:
+        margem = st.text_input("Margem (graus)", value=margem_old, key="modal_margem")
+    col11, col12 = st.columns(2)
+    with col11:
+        lat_modal = st.text_input("Latitude", value=lat_old, key="modal_lat")
+    with col12:
+        lng_modal = st.text_input("Longitude", value=long_old, key="modal_lng")
+    col21, col22 = st.columns(2)
+    with col21:
+        azimute = st.text_input("Azimute (graus)", value=azimute_old, key="modal_azimute")
+    with col22:
+        distancia = st.text_input("Distância (metros)", value=distancia_old, key="modal_distancia")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("✅ Atualizar", use_container_width=True):
+            lat = validar_coordenada(lat_modal)
+            lng = validar_coordenada(lng_modal)
+            if lat is not None and lng is not None and nome_modal:
+                pontos[index] = {   
+                    "lat": lat,
+                    "lng": lng,
+                    "nome": nome_modal,
+                    "margem": margem,
+                    "azimute": azimute,
+                    "distancia": distancia,
+                    "visivel": pontos[index].get("visivel", True),  # mantém visibilidade anterior
+                    "tipo": "torre"
+                }
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
+            else:
+                st.error("Preencha todos os campos corretamente!")
+    with col_btn2:
+        if st.button("❌ Cancelar", use_container_width=True):
+            st.rerun()
+
 # ===============================
 # Recupera pontos da URL e inicializa session_state
 # ===============================
@@ -230,7 +276,6 @@ if 'show_dialog' not in st.session_state:
 
 # Usar session_state para tudo
 pontos = st.session_state.pontos
-
 
 # ===============================
 # Inputs do usuário
