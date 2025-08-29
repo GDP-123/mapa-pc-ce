@@ -20,6 +20,11 @@ st.markdown("""
         width: 100%;
         font-size: 16px;
     }
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -333,6 +338,10 @@ function initMap() {{
     var pos = {{ lat: -3.7319, lng: -38.5267 }};
     const points = {markers_json};
 
+    // Ajustar o tamanho do container do mapa
+    const mapContainer = document.getElementById("map-container");
+    mapContainer.style.height = window.innerHeight + 'px';
+    
     var map = new google.maps.Map(document.getElementById("map"), {{
         center: pos,
         zoom: 12,
@@ -422,8 +431,8 @@ function initMap() {{
         const sectorPolygon = new google.maps.Polygon({{
             paths: sectorPoints,
             strokeColor: "#0000FF",
-            strokeOpacity: 0.9,
-            strokeWeight: 2,
+            strokeOpacity: 0.5,
+            strokeWeight: 1,
             fillColor: "#0000FF",
             fillOpacity: 0.35,
             map: map
@@ -438,9 +447,9 @@ function initMap() {{
         
         new google.maps.Polyline({{
             path: [center, azPoint],
-            strokeColor: "#0000FF",
-            strokeOpacity: 1,
-            strokeWeight: 3,
+            strokeColor: "#FF0000",
+            strokeOpacity: 0.5,
+            strokeWeight: 1,
             map: map
         }});
 
@@ -500,12 +509,42 @@ function initMap() {{
         }}
     }}
 }}
+
+// Função para ajustar o tamanho do mapa quando a janela for redimensionada
+function ajustarTamanhoMapa() {{
+    const mapContainer = document.getElementById("map-container");
+    const mapElement = document.getElementById("map");
+    
+    if (mapContainer && mapElement) {{
+        mapContainer.style.height = window.innerHeight + 'px';
+        mapElement.style.height = window.innerHeight + 'px';
+        
+        // Re-center map if it exists
+        if (window.map) {{
+            google.maps.event.trigger(window.map, 'resize');
+        }}
+    }}
+}}
+
+// Inicializar quando a página carregar
+window.addEventListener('load', function() {{
+    initMap();
+    ajustarTamanhoMapa();
+}});
+
+// Ajustar quando a janela for redimensionada
+window.addEventListener('resize', function() {{
+    ajustarTamanhoMapa();
+}});
 </script>
 </head>
-<body onload="initMap()">
-<div id="map" style="height:600px; width:100%;"></div>
+<body style="margin: 0; padding: 0; height: 100vh; overflow: hidden;">
+<div id="map-container" style="width: 100%; height: 100vh;">
+    <div id="map" style="height: 100%; width: 100%;"></div>
+</div>
 </body>
 </html>
 """
 
-components.html(html_code, height=700)
+# Use uma altura grande para garantir que o JavaScript faça o ajuste correto
+components.html(html_code, height=800, scrolling=False)
