@@ -127,14 +127,15 @@ def encurtar_url(url_longa):
 def get_host_url():
     ctx = get_script_run_ctx()
     if ctx is None:
-        return "http://localhost:8501"  # fallback padrão
+        return "https://mapa-pc-ce-app.streamlit.app"
+        #return "http://localhost:8501"  # fallback padrão
 
     try:
         # Versões novas do Streamlit
         return ctx.request.url_root.rstrip("/")
     except Exception:
-        # Caso mude de novo em versões futuras
-        return "http://localhost:8501"
+        return "https://mapa-pc-ce-app.streamlit.app"
+        #return "http://localhost:8501"
 
 
 # ===============================
