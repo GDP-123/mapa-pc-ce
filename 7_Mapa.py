@@ -2,8 +2,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 import base64
 import json
+import requests
 
 from streamlit import dialog
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+
 
 # ===============================
 # Configurações
@@ -107,6 +110,32 @@ def exibir_ponto_com_botoes(ponto, index):
             # Atualizar session_state e URL
             atualizar_url_e_session_state(pontos)
             st.rerun()
+
+# Função para encurtar link
+def encurtar_url(url_longa):
+    """Encurta URL usando o serviço tinyurl.com"""
+    try:
+        response = requests.get(f"http://tinyurl.com/api-create.php?url={url_longa}")
+        if response.status_code == 200:
+            return response.text
+        else:
+            return url_longa  # Fallback para URL original
+    except:
+        return url_longa  # Fallback em caso de erro
+
+# Função robusta para capturar a URL base (funciona local e no Cloud)
+def get_host_url():
+    ctx = get_script_run_ctx()
+    if ctx is None:
+        return "http://localhost:8501"  # fallback padrão
+
+    try:
+        # Versões novas do Streamlit
+        return ctx.request.url_root.rstrip("/")
+    except Exception:
+        # Caso mude de novo em versões futuras
+        return "http://localhost:8501"
+
 
 # ===============================
 # Pop-ups
@@ -259,6 +288,70 @@ def editar_torre(index,nome_old, lat_old, long_old,margem_old, azimute_old, dist
         if st.button("❌ Cancelar", use_container_width=True):
             st.rerun()
 
+@st.dialog("Compartilhar")
+def compartilhar():
+    # Obter query param "data"
+    current_data = st.query_params.get("data", "")
+    if isinstance(current_data, list) and current_data:
+        current_data = current_data[0]
+
+    # Construir URL completa
+    base_url = get_host_url()
+    url_original = f"{base_url}?data={current_data}" if current_data else base_url
+
+    # Encurtar URL (sua função externa)
+    url_encurtada = encurtar_url(url_original)
+
+    # Exibir título
+    st.write("### 🔗 Link para Compartilhar")
+
+    # Mostrar URL encurtada
+    st.code(url_encurtada, language="text")
+
+    # Botão para copiar URL encurtada
+    if st.button("📋 Copiar URL Encurtada", use_container_width=True):
+        st.session_state.copied = True
+        js_code = f"""
+        <script>
+        navigator.clipboard.writeText("{url_encurtada}");
+        </script>
+        """
+        components.html(js_code, height=0)
+
+    if st.session_state.get("copied", False):
+        st.success("✅ URL copiada para a área de transferência!")
+        st.session_state.copied = False
+
+    st.write("---")
+    st.write("### 📱 QR Code")
+
+    # Gerar QR Code
+    try:
+        import qrcode
+        from io import BytesIO
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(url_encurtada)
+        qr.make(fit=True)
+
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+
+        # Converter para imagem
+        img_buffer = BytesIO()
+        qr_img.save(img_buffer, format="PNG")
+        img_buffer.seek(0)
+
+        st.image(img_buffer, width=200)
+
+    except Exception:
+        st.warning("Não foi possível gerar o QR Code")
+        st.info("Instale: `pip install qrcode[pil]`")
+
+    st.write("---")
+    st.write("### 🌐 URL Original")
+    with st.expander("Ver URL completa"):
+        st.code(url_original, language="text")
+    
 # ===============================
 # Recupera pontos da URL e inicializa session_state
 # ===============================
@@ -294,6 +387,10 @@ if st.sidebar.button("➕ Adicionar Ponto 📍"):
 # Adicionando Antena
 if st.sidebar.button("➕ Adicionar Antena 🗼"):
     novo_antena()
+
+# Compartilhar
+if st.sidebar.button("Compartilhar"):
+    compartilhar()
 
 # Limpando pontos
 #if st.sidebar.button("🗑️ Limpar pontos"):
