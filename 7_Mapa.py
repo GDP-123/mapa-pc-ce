@@ -3,9 +3,11 @@ import streamlit.components.v1 as components
 import base64
 import json
 import requests
-
+import qrcode
+        
 from streamlit import dialog
 from streamlit.runtime.scriptrunner import get_script_run_ctx
+from io import BytesIO
 
 
 # ===============================
@@ -32,6 +34,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 GOOGLE_MAPS_API_KEY = "AIzaSyD06plaNz2fi0Sdj0aDPYWsoaVwRl3PxUU" 
+#LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
+LINK_BASE = 'http://localhost:8501'
 
 # ===============================
 # Funções de codificação
@@ -127,16 +131,13 @@ def encurtar_url(url_longa):
 def get_host_url():
     ctx = get_script_run_ctx()
     if ctx is None:
-        return "https://mapa-pc-ce-app.streamlit.app"
-        #return "http://localhost:8501"  # fallback padrão
+        return LINK_BASE
 
     try:
         # Versões novas do Streamlit
         return ctx.request.url_root.rstrip("/")
     except Exception:
-        return "https://mapa-pc-ce-app.streamlit.app"
-        #return "http://localhost:8501"
-
+        return LINK_BASE
 
 # ===============================
 # Pop-ups
@@ -304,33 +305,18 @@ def compartilhar():
     url_encurtada = encurtar_url(url_original)
 
     # Exibir título
-    st.write("### 🔗 Link para Compartilhar")
-
+    st.write("### 🔗 URL Encurtada")
     # Mostrar URL encurtada
     st.code(url_encurtada, language="text")
 
-    # Botão para copiar URL encurtada
-    if st.button("📋 Copiar URL Encurtada", use_container_width=True):
-        st.session_state.copied = True
-        js_code = f"""
-        <script>
-        navigator.clipboard.writeText("{url_encurtada}");
-        </script>
-        """
-        components.html(js_code, height=0)
-
-    if st.session_state.get("copied", False):
-        st.success("✅ URL copiada para a área de transferência!")
-        st.session_state.copied = False
-
-    st.write("---")
-    st.write("### 📱 QR Code")
+    # Exibir URL Completa
+    st.write("### 🌐 URL Original")
+    with st.expander("Ver URL completa"):
+        st.code(url_original, language="text")
 
     # Gerar QR Code
+    st.write("### 📱 QR Code")
     try:
-        import qrcode
-        from io import BytesIO
-
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
         qr.add_data(url_encurtada)
         qr.make(fit=True)
@@ -342,16 +328,18 @@ def compartilhar():
         qr_img.save(img_buffer, format="PNG")
         img_buffer.seek(0)
 
-        st.image(img_buffer, width=200)
+        col1, col2, col3 = st.columns([1,2,1])  # coluna do meio maior
+        with col1:
+            st.write("")  # vazia
+        with col2:
+            st.image(img_buffer, width=200)
+        with col3:
+            st.write("")  # vazia
 
     except Exception:
         st.warning("Não foi possível gerar o QR Code")
-        st.info("Instale: `pip install qrcode[pil]`")
 
-    st.write("---")
-    st.write("### 🌐 URL Original")
-    with st.expander("Ver URL completa"):
-        st.code(url_original, language="text")
+    
     
 # ===============================
 # Recupera pontos da URL e inicializa session_state
