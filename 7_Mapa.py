@@ -37,8 +37,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 GOOGLE_MAPS_API_KEY = "AIzaSyD06plaNz2fi0Sdj0aDPYWsoaVwRl3PxUU" 
-#LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
-LINK_BASE = 'http://localhost:8501'
+LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
+#LINK_BASE = 'http://localhost:8501'
 
 # ===============================
 # Função Extrator
@@ -832,3 +832,4 @@ window.addEventListener('resize', function() {{
 
 # Use uma altura grande para garantir que o JavaScript faça o ajuste correto
 components.html(html_code, height=800, scrolling=False)
+
