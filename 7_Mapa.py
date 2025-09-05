@@ -1,10 +1,13 @@
-import streamlit as st
-import streamlit.components.v1 as components
 import base64
 import json
-import requests
+import pandas as pd
 import qrcode
-        
+import re
+import requests
+import streamlit as st
+import streamlit.components.v1 as components
+import zlib
+       
 from streamlit import dialog
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from io import BytesIO
@@ -21,9 +24,9 @@ st.markdown("""
 <style>
     .stButton > button {
         border-radius: 5px;
-        height: 40px;
+        height: 30px;
         width: 100%;
-        font-size: 16px;
+        font-size: 5px;
     }
     html, body {
         margin: 0;
@@ -34,21 +37,85 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 GOOGLE_MAPS_API_KEY = "AIzaSyD06plaNz2fi0Sdj0aDPYWsoaVwRl3PxUU" 
-LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
-#LINK_BASE = 'http://localhost:8501'
+#LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
+LINK_BASE = 'http://localhost:8501'
+
+# ===============================
+# Função Extrator
+# ===============================
+def extrair_coordenadas_vivo(texto):
+    try:
+        # Padrões regex para extrair os valores
+        padrao_latitude = r'LATITUDE\s+([\d\-\.]+)'
+        padrao_longitude = r'LONGITUDE\s+([\d\-\.]+)'
+        padrao_azimute = r'AZIMUTE\s+(\d+)'
+        
+        # Extraindo os valores
+        latitude = re.search(padrao_latitude, texto)
+        longitude = re.search(padrao_longitude, texto)
+        azimute = re.search(padrao_azimute, texto)
+        
+        # Convertendo para os formatos apropriados
+        lat = latitude.group(1) if latitude else None
+        lon = longitude.group(1) if longitude else None
+        az = azimute.group(1) if azimute else None
+
+        lat_conv = converter_graus_decimal_vivo(lat)
+        lon_conv = converter_graus_decimal_vivo(lon)
+        
+        return lat_conv, lon_conv, az
+        
+    except Exception as e:
+        return None, None, None
+    
+def converter_graus_decimal_vivo(coord):
+    if not coord or pd.isna(coord):
+        return None
+    
+    try:
+        # Remove o sinal negativo se existir e processa
+        negativo = False
+        if coord.startswith('-'):
+            negativo = True
+            coord = coord[1:]
+        
+        # Divide os componentes
+        partes = coord.split('-')
+        if len(partes) == 3:
+            graus = float(partes[0])
+            minutos = float(partes[1])
+            segundos = float(partes[2])
+            
+            # Calcula decimal
+            decimal = graus + (minutos / 60) + (segundos / 3600)
+            
+            # Aplica sinal negativo se necessário
+            if negativo:
+                decimal = -decimal
+                
+            return round(decimal, 6)
+        else:
+            return float(coord)  # Se já estiver em formato decimal
+            
+    except:
+        return None
 
 # ===============================
 # Funções de codificação
 # ===============================
 def encode_data(data: dict) -> str:
-    """Codifica dados em base64 para URL"""
+    """Codifica e comprime dados em base64 para URL"""
     json_str = json.dumps(data)
-    return base64.urlsafe_b64encode(json_str.encode()).decode()
+    # Comprimir os dados
+    compressed = zlib.compress(json_str.encode(), level=9)
+    return base64.urlsafe_b64encode(compressed).decode()
 
 def decode_data(data_str: str) -> dict:
-    """Decodifica dados de base64"""
+    """Decodifica e descomprime dados de base64"""
     try:
-        json_str = base64.urlsafe_b64decode(data_str.encode()).decode()
+        compressed = base64.urlsafe_b64decode(data_str.encode())
+        # Descomprimir os dados
+        json_str = zlib.decompress(compressed).decode()
         data = json.loads(json_str)
         
         # Garantir que pontos antigos tenham o campo 'visivel'
@@ -77,43 +144,44 @@ def atualizar_url_e_session_state(pontos_lista):
     
 # Função para exibir cada ponto com os 3 botões
 def exibir_ponto_com_botoes(ponto, index):
-    if ponto.get('tipo', "ponto") == 'ponto':
-        st.sidebar.write(f"📍 **{ponto['nome']}**")
-    elif ponto.get('tipo', "torre") == 'torre':
-        st.sidebar.write(f"🗼 **{ponto['nome']}**")
+    # Criar 3 colunas: 1 para botões compactos, 2 para o nome
+    col_botoes, col_nome = st.sidebar.columns([1.2, 3])
+    
+    with col_botoes:
+        # Botões em uma sub-coluna compacta
+        col1, col2, col3 = st.columns(3)
         
-    # Criar 3 colunas para os botões quadrados
-    coll1, coll2, coll3 = st.sidebar.columns(3)
+        with col1:
+            # Botão Visibilidade
+            icone = "👁️" if ponto.get('visivel', True) else "👁️‍🗨️"
+            tooltip = "Ocultar" if ponto.get('visivel', True) else "Mostrar"
+            if st.button(icone, key=f"visibility_{index}", help=tooltip):
+                pontos[index]['visivel'] = not ponto.get('visivel', True)
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
+        
+        with col2:
+            # Botão Editar
+            if st.button("✏️", key=f"edit_{index}", help="Editar"):
+                if ponto['tipo'] == 'ponto':
+                    editar_ponto(index, ponto['nome'], ponto['lat'], ponto['lng'])
+                elif ponto['tipo'] == 'torre':
+                    editar_torre(index, ponto['nome'], ponto['lat'], ponto['lng'], 
+                               ponto['margem'], ponto['azimute'], ponto['distancia'])
+        
+        with col3:
+            # Botão Excluir
+            if st.button("🗑️", key=f"delete_{index}", help="Excluir"):
+                pontos.pop(index)
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
     
-    with coll1:
-        # Botão 1 - Toggle visibilidade (👁️/👁️‍🗨️)
-        icone = "👁️" if ponto.get('visivel', True) else "👁️‍🗨️"
-        tooltip = "Ocultar" if ponto.get('visivel', True) else "Mostrar ponto"
-        if st.button(icone, key=f"visibility_{index}", use_container_width=True, help=tooltip):
-            # Alternar visibilidade
-            pontos[index]['visivel'] = not ponto.get('visivel', True)
-            # Atualizar session_state e URL
-            atualizar_url_e_session_state(pontos)
-            st.rerun()
-    
-    with coll2:
-        # Botão 2 - Editar (✏️)
-        tooltip = "Editar"
-        if st.button("✏️", key=f"edit_{index}", use_container_width=True,help=tooltip):
-            if ponto['tipo']=='ponto':
-                editar_ponto(index,ponto['nome'],ponto['lat'],ponto['lng'])
-            elif ponto['tipo']=='torre':
-                editar_torre(index,ponto['nome'],ponto['lat'],ponto['lng'],ponto['margem'],ponto['azimute'], ponto['distancia'])
-    
-    with coll3:
-        # Botão 3 - Excluir (🗑️)
-        tooltip = "Excluir"
-        if st.button("🗑️", key=f"delete_{index}", use_container_width=True,help=tooltip):
-            # Remover ponto da lista
-            pontos.pop(index)
-            # Atualizar session_state e URL
-            atualizar_url_e_session_state(pontos)
-            st.rerun()
+    with col_nome:
+        # Nome do ponto
+        if ponto.get('tipo', "ponto") == 'ponto':
+            st.write(f"📍 **{ponto['nome']}**")
+        elif ponto.get('tipo', "torre") == 'torre':
+            st.write(f"🗼 **{ponto['nome']}**")
 
 # Função para encurtar link
 def encurtar_url(url_longa):
@@ -145,7 +213,6 @@ def get_host_url():
 # Modal/Dialog para adicionar ponto
 @st.dialog("Adicionar Novo Ponto")
 def novo_ponto():
-    #st.header("Adicionar Novo Ponto")
     nome_modal = st.text_input("Nome do ponto", key="modal_nome")
     col1, col2 = st.columns(2)
     with col1:
@@ -249,7 +316,6 @@ def editar_ponto(index,nome_old,lat_old,long_old):
 
 @st.dialog("Editar Antena")
 def editar_torre(index,nome_old, lat_old, long_old,margem_old, azimute_old, distancia_old):
-
     col01, col02 = st.columns(2)
     with col01:
         nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
@@ -290,12 +356,136 @@ def editar_torre(index,nome_old, lat_old, long_old,margem_old, azimute_old, dist
         if st.button("❌ Cancelar", use_container_width=True):
             st.rerun()
 
+@st.dialog("Importar Extrato")
+def importar_extrato():
+    # Inicializar a lista de pontos se não existir na sessão
+    if "pontos" not in st.session_state:
+        st.session_state.pontos = []
+    
+    # Upload do arquivo
+    uploaded_file = st.file_uploader(
+        "Selecione um arquivo XLSX",
+        type=["xlsx"],
+        help="Faça upload de um arquivo Excel (.xlsx)"
+    )
+    
+    # Variável para controlar se o processamento foi concluído
+    if 'processamento_concluido' not in st.session_state:
+        st.session_state.processamento_concluido = False
+    
+    if uploaded_file is not None and not st.session_state.processamento_concluido:
+        try:
+            # Lendo o arquivo Excel
+            xls = pd.ExcelFile(uploaded_file)
+            
+            # Mostrando as abas disponíveis
+            sheets = xls.sheet_names
+            selected_sheet = st.selectbox(
+                "Selecione a aba para análise:",
+                sheets,
+                key="sheet_select"
+            )
+            
+            # Botão de confirmação para iniciar a leitura
+            if st.button("✅ Confirmar e Processar Aba", type="primary"):
+                # Lendo a aba selecionada
+                df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
+
+                # Verificando a operadora
+                operadora = df.iloc[1, 1] if len(df) > 1 else ""
+
+                # Listas para armazenar os resultados
+                latitudes_dec = []
+                longitudes_dec = []
+                azimutes = []
+                data_hora = []
+                pontos_importados = 0
+
+                if "VIVO" in operadora:
+                    endereco_fim = df.iloc[5:, 17].reset_index(drop=True)
+                    data_fim = df.iloc[5:, 6].reset_index(drop=True)
+                    hora_fim = df.iloc[5:, 7].reset_index(drop=True)
+                                        
+                    for i, (texto, v_data, v_hora) in enumerate(zip(endereco_fim,data_fim,hora_fim)):                        
+                        if pd.isna(texto):  # Pula valores nulos
+                            lat, lon, az, aux = None, None, None, None
+                        else:
+                            lat, lon, az = extrair_coordenadas_vivo(str(texto))
+                            aux = v_data + ' - ' + v_hora
+                        
+                        latitudes_dec.append(lat)
+                        longitudes_dec.append(lon)
+                        azimutes.append(az)
+                        data_hora.append(aux)
+                    
+                    # Processar todos os pontos após a extração
+                    for i, (lat, lon, az, d_t) in enumerate(zip(latitudes_dec, longitudes_dec, azimutes, data_hora)):
+                        #lat_val = validar_coordenada(lat)
+                        lat_val = lat
+                        #lng_val = validar_coordenada(lon)
+                        lng_val = lon
+                        az_val = az
+                        d_t_val = d_t
+                        
+                        if lat_val is not None and lng_val is not None and az_val is not None and d_t_val is not None:
+                            # Usar nome baseado no índice ou criar um padrão                            
+                            st.session_state.pontos.append({
+                                "lat": lat_val,
+                                "lng": lng_val,
+                                "nome": d_t_val,
+                                "visivel": True,
+                                "margem": 120, 
+                                "azimute": az_val,
+                                "distancia": 1500,  
+                                "tipo": "torre"
+                            })
+                            pontos_importados += 1
+                    
+                    # Atualizar URL e session state uma vez, após processar todos os pontos
+                    atualizar_url_e_session_state(st.session_state.pontos)
+                    
+                    # Marcar processamento como concluído
+                    st.session_state.processamento_concluido = True
+                    
+                    # Forçar rerun para fechar o diálogo e atualizar o mapa
+                    st.rerun()
+                            
+                else:
+                    st.error("Operadora não reconhecida ou extrato não compatível")
+                    st.info("A operadora detectada foi: " + (operadora if operadora else "Não identificada"))
+
+        except Exception as e:
+            st.error(f"Erro na leitura do extrato: {str(e)}")
+    
+    # Se o processamento foi concluído, mostrar mensagem de sucesso e botão para fechar
+    elif st.session_state.processamento_concluido:
+        st.success("✅ Processamento concluído! Os pontos foram adicionados ao mapa.")
+        
+        # Mostrar preview dos pontos importados
+        pontos_importados = len([p for p in st.session_state.pontos if p['nome'].startswith('Ponto_Extrato_')])
+        if pontos_importados > 0:
+            with st.expander("📋 Ver pontos importados"):
+                pontos_recentes = [p for p in st.session_state.pontos if p['nome'].startswith('Ponto_Extrato_')]
+                for i, ponto in enumerate(pontos_recentes[-min(5, len(pontos_recentes)):]):  # Mostrar até 5 pontos
+                    st.write(f"**{ponto['nome']}**: {ponto['lat']}, {ponto['lng']}")
+        
+        # Botão para fechar o diálogo e visualizar no mapa
+        if st.button("🗺️ Fechar e Visualizar no Mapa", type="primary"):
+            # Limpar estado de processamento
+            st.session_state.processamento_concluido = False
+            st.rerun()
+
 @st.dialog("Compartilhar")
 def compartilhar():
     # Obter query param "data"
     current_data = st.query_params.get("data", "")
     if isinstance(current_data, list) and current_data:
         current_data = current_data[0]
+
+    # Verificar se a URL é muito longa
+    if len(current_data) > 1500:  # Limite conservador
+        st.warning("⚠️ Muitos pontos para compartilhar via URL.")
+        st.warning("⚠️ Considere reduzir o número de pontos visíveis ou usar menos dados.")
 
     # Construir URL completa
     base_url = get_host_url()
@@ -367,19 +557,27 @@ pontos = st.session_state.pontos
 # ===============================
 # Inputs do usuário
 # ===============================
-st.sidebar.title("Gerenciar Pontos")
+#st.sidebar.center.title("Gerenciar Pontos")
+st.sidebar.markdown(
+    "<h2 style='text-align: center;'>Gerenciar Pontos/Torres</h2>", 
+    unsafe_allow_html=True
+)
 
 # Adicionando ponto
-if st.sidebar.button("➕ Adicionar Ponto 📍"):
-    novo_ponto()
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("➕ Ponto📍", use_container_width=True, help="Adicionar novo ponto"):
+        novo_ponto()
 
-# Adicionando Antena
-if st.sidebar.button("➕ Adicionar Antena 🗼"):
-    novo_antena()
+with col2:
+    if st.button("➕Antena🗼", use_container_width=True, help="Adicionar nova antena"):
+        novo_antena()
 
-# Compartilhar
-if st.sidebar.button("Compartilhar"):
+if st.sidebar.button("Compartilhar 🔗", use_container_width=True, help="Compartilhar pontos no mapa"):
     compartilhar()
+
+if st.sidebar.button("Importar Extrato 📤", use_container_width=True, help="Importar Extrato no formato XLSX"):
+    importar_extrato()
 
 # Limpando pontos
 #if st.sidebar.button("🗑️ Limpar pontos"):
@@ -634,4 +832,3 @@ window.addEventListener('resize', function() {{
 
 # Use uma altura grande para garantir que o JavaScript faça o ajuste correto
 components.html(html_code, height=800, scrolling=False)
-
