@@ -144,40 +144,36 @@ def atualizar_url_e_session_state(pontos_lista):
     
 # Função para exibir cada ponto com os 3 botões
 def exibir_ponto_com_botoes(ponto, index):
-    # Criar 3 colunas: 1 para botões compactos, 2 para o nome
-    col_botoes, col_nome = st.sidebar.columns([1.2, 3])
+    # Criar uma linha com 4 colunas: 3 para botões e 1 para o nome
+    col1, col2, col3, col_nome = st.sidebar.columns([1, 1, 1, 5])
     
-    with col_botoes:
-        # Botões em uma sub-coluna compacta
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            # Botão Visibilidade
-            icone = "👁️" if ponto.get('visivel', True) else "👁️‍🗨️"
-            tooltip = "Ocultar" if ponto.get('visivel', True) else "Mostrar"
-            if st.button(icone, key=f"visibility_{index}", help=tooltip):
-                pontos[index]['visivel'] = not ponto.get('visivel', True)
-                atualizar_url_e_session_state(pontos)
-                st.rerun()
-        
-        with col2:
-            # Botão Editar
-            if st.button("✏️", key=f"edit_{index}", help="Editar"):
-                if ponto['tipo'] == 'ponto':
-                    editar_ponto(index, ponto['nome'], ponto['lat'], ponto['lng'])
-                elif ponto['tipo'] == 'torre':
-                    editar_torre(index, ponto['nome'], ponto['lat'], ponto['lng'], 
-                               ponto['margem'], ponto['azimute'], ponto['distancia'])
-        
-        with col3:
-            # Botão Excluir
-            if st.button("🗑️", key=f"delete_{index}", help="Excluir"):
-                pontos.pop(index)
-                atualizar_url_e_session_state(pontos)
-                st.rerun()
+    # Botão Visibilidade
+    with col1:
+        icone = "👁️" if ponto.get('visivel', True) else "👁️‍🗨️"
+        tooltip = "Ocultar" if ponto.get('visivel', True) else "Mostrar"
+        if st.button(icone, key=f"visibility_{index}", help=tooltip):
+            pontos[index]['visivel'] = not ponto.get('visivel', True)
+            atualizar_url_e_session_state(pontos)
+            st.rerun()
     
+    # Botão Editar
+    with col2:
+        if st.button("✏️", key=f"edit_{index}", help="Editar"):
+            if ponto['tipo'] == 'ponto':
+                editar_ponto(index, ponto['nome'], ponto['lat'], ponto['lng'])
+            elif ponto['tipo'] == 'torre':
+                editar_torre(index, ponto['nome'], ponto['lat'], ponto['lng'], 
+                           ponto['margem'], ponto['azimute'], ponto['distancia'])
+    
+    # Botão Excluir
+    with col3:
+        if st.button("🗑️", key=f"delete_{index}", help="Excluir"):
+            pontos.pop(index)
+            atualizar_url_e_session_state(pontos)
+            st.rerun()
+    
+    # Nome do ponto
     with col_nome:
-        # Nome do ponto
         if ponto.get('tipo', "ponto") == 'ponto':
             st.write(f"📍 **{ponto['nome']}**")
         elif ponto.get('tipo', "torre") == 'torre':
@@ -832,4 +828,3 @@ window.addEventListener('resize', function() {{
 
 # Use uma altura grande para garantir que o JavaScript faça o ajuste correto
 components.html(html_code, height=800, scrolling=False)
-
