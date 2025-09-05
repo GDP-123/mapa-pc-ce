@@ -4,6 +4,7 @@ import pandas as pd
 import qrcode
 import re
 import requests
+import time
 import streamlit as st
 import streamlit.components.v1 as components
 import zlib
@@ -530,6 +531,7 @@ def compartilhar():
 # ===============================
 # Recupera pontos da URL e inicializa session_state
 # ===============================
+time.sleep(0.5)
 query_params = st.query_params
 
 if "data" in query_params:
@@ -828,3 +830,4 @@ window.addEventListener('resize', function() {{
 
 # Use uma altura grande para garantir que o JavaScript faça o ajuste correto
 components.html(html_code, height=800, scrolling=False)
+
