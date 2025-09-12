@@ -4,12 +4,10 @@ import pandas as pd
 import qrcode
 import re
 import requests
-import time
 import streamlit as st
 import streamlit.components.v1 as components
 import zlib
        
-from streamlit import dialog
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from io import BytesIO
 
@@ -18,7 +16,6 @@ from io import BytesIO
 # Configurações
 # ===============================
 st.set_page_config(layout="wide", initial_sidebar_state='collapsed', page_icon= '🦎')
-#st.title("🗺️ Mapa PC-CE - Google Maps")
 
 # CSS para botões quadrados
 st.markdown("""
@@ -27,19 +24,32 @@ st.markdown("""
         border-radius: 5px;
         height: 30px;
         width: 100%;
-        font-size: 5px;
+        font-size: 12px;
+        margin: 2px 0;
     }
-    html, body {
+    .sidebar .sidebar-content {
+        background-color: #f0f2f6;
+    }
+    html, body, #root, .block-container, .main, #root > div:nth-child(1) {
         margin: 0;
         padding: 0;
-        height: 100%;
+        height: 100vh;
+        width: 100%;
+    }
+    .block-container {
+        padding: 0;
+        max-width: 100%;
+    }
+    iframe {
+        height: 100vh !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 GOOGLE_MAPS_API_KEY = "AIzaSyD06plaNz2fi0Sdj0aDPYWsoaVwRl3PxUU" 
-LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
-#LINK_BASE = 'http://localhost:8501'
+
+#LINK_BASE = 'https://mapa-pc-ce-app.streamlit.app'
+LINK_BASE = 'http://localhost:8503'
 
 # ===============================
 # Função Extrator
@@ -163,8 +173,9 @@ def exibir_ponto_com_botoes(ponto, index):
             if ponto['tipo'] == 'ponto':
                 editar_ponto(index, ponto['nome'], ponto['lat'], ponto['lng'])
             elif ponto['tipo'] == 'torre':
-                editar_torre(index, ponto['nome'], ponto['lat'], ponto['lng'], 
-                           ponto['margem'], ponto['azimute'], ponto['distancia'])
+                editar_torre(index, ponto['nome'], ponto['lat'], ponto['lng'], ponto['margem'], ponto['azimute'], ponto['distancia'])
+            elif ponto['tipo'] == 'circulo':
+                editar_circulo(index, ponto['nome'], ponto['lat'], ponto['lng'], ponto['raio'])
     
     # Botão Excluir
     with col3:
@@ -179,10 +190,11 @@ def exibir_ponto_com_botoes(ponto, index):
             st.write(f"📍 **{ponto['nome']}**")
         elif ponto.get('tipo', "torre") == 'torre':
             st.write(f"🗼 **{ponto['nome']}**")
+        elif ponto.get('tipo', "circulo") == 'circulo':
+            st.write(f"⭕ **{ponto['nome']}**")
 
 # Função para encurtar link
 def encurtar_url(url_longa):
-    """Encurta URL usando o serviço tinyurl.com"""
     try:
         response = requests.get(f"http://tinyurl.com/api-create.php?url={url_longa}")
         if response.status_code == 200:
@@ -194,12 +206,10 @@ def encurtar_url(url_longa):
 
 # Função robusta para capturar a URL base (funciona local e no Cloud)
 def get_host_url():
-    ctx = get_script_run_ctx()
-    if ctx is None:
-        return LINK_BASE
-
     try:
-        # Versões novas do Streamlit
+        ctx = get_script_run_ctx()
+        if ctx is None or not hasattr(ctx, 'request'):
+            return LINK_BASE
         return ctx.request.url_root.rstrip("/")
     except Exception:
         return LINK_BASE
@@ -281,6 +291,41 @@ def novo_antena():
         if st.button("❌ Cancelar", use_container_width=True):
             st.rerun()
 
+@st.dialog("Adicionar Novo Circulo")
+def novo_circulo():
+    col1, col2 = st.columns(2)
+    with col1:
+        nome_modal = st.text_input("Nome do ponto", key="modal_nome")
+    with col2:
+        raio = st.text_input("Raio (metros)", key="modal_raio")
+    col1, col2 = st.columns(2)
+    with col1:
+        lat_modal = st.text_input("Latitude", value="-3.731900", key="modal_lat")
+    with col2:
+        lng_modal = st.text_input("Longitude", value="-38.526700", key="modal_lng")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("✅ Adicionar", use_container_width=True):
+            lat = validar_coordenada(lat_modal)
+            lng = validar_coordenada(lng_modal)
+            if lat is not None and lng is not None and nome_modal:
+                pontos.append({
+                    "lat": lat,
+                    "lng": lng,
+                    "nome": nome_modal,
+                    "raio": raio,
+                    "visivel": True,
+                    "tipo": "circulo"
+                })
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
+            else:
+                st.error("Preencha todos os campos corretamente!")
+    with col_btn2:
+        if st.button("❌ Cancelar", use_container_width=True):
+            st.rerun()
+
 @st.dialog("Editar Ponto")
 def editar_ponto(index,nome_old,lat_old,long_old):
     nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
@@ -352,6 +397,45 @@ def editar_torre(index,nome_old, lat_old, long_old,margem_old, azimute_old, dist
     with col_btn2:
         if st.button("❌ Cancelar", use_container_width=True):
             st.rerun()
+
+@st.dialog("Editar Circulo")
+def editar_circulo(index,nome_old,lat_old,long_old, raio_old):
+    flag = False
+    col1, col2 = st.columns(2)
+    with col1:
+        nome_modal = st.text_input("Nome do ponto", value=nome_old, key="modal_nome")
+    with col2:
+        raio = st.text_input("Raio (metros)", value=raio_old, key="modal_raio")
+    col1, col2 = st.columns(2)
+    with col1:
+        lat_modal = st.text_input("Latitude", value=lat_old, key="modal_lat")
+    with col2:
+        lng_modal = st.text_input("Longitude", value=long_old, key="modal_lng")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("✅ Atualizar", use_container_width=True):
+            lat = validar_coordenada(lat_modal)
+            lng = validar_coordenada(lng_modal)
+            if lat is not None and lng is not None and nome_modal:
+                pontos[index] = {   
+                    "lat": lat,
+                    "lng": lng,
+                    "nome": nome_modal,
+                    "raio": raio,
+                    "visivel": pontos[index].get("visivel", True),  # mantém visibilidade anterior
+                    "tipo": "circulo"
+                }
+                atualizar_url_e_session_state(pontos)
+                st.rerun()
+            else:
+                flag = True              
+    with col_btn2:
+        if st.button("❌ Cancelar", use_container_width=True):
+            st.rerun()
+    
+    if flag:
+        st.error("Preencha todos os campos corretamente!")
 
 @st.dialog("Importar Extrato")
 def importar_extrato():
@@ -525,13 +609,11 @@ def compartilhar():
 
     except Exception:
         st.warning("Não foi possível gerar o QR Code")
-
-    
-    
+  
 # ===============================
 # Recupera pontos da URL e inicializa session_state
 # ===============================
-time.sleep(0.5)
+
 query_params = st.query_params
 
 if "data" in query_params:
@@ -562,14 +644,19 @@ st.sidebar.markdown(
 )
 
 # Adicionando ponto
-col1, col2 = st.sidebar.columns(2)
+col1, col2, col3 = st.sidebar.columns(3)
 with col1:
     if st.button("➕ Ponto📍", use_container_width=True, help="Adicionar novo ponto"):
         novo_ponto()
 
 with col2:
-    if st.button("➕Antena🗼", use_container_width=True, help="Adicionar nova antena"):
+    if st.button("➕ Antena🗼", use_container_width=True, help="Adicionar nova antena"):
         novo_antena()
+
+with col3:
+    if st.button("➕ Circulo ⭕", use_container_width=True, help="Adicionar um círculo"):
+        novo_circulo()
+
 
 if st.sidebar.button("Compartilhar 🔗", use_container_width=True, help="Compartilhar pontos no mapa"):
     compartilhar()
@@ -577,19 +664,10 @@ if st.sidebar.button("Compartilhar 🔗", use_container_width=True, help="Compar
 if st.sidebar.button("Importar Extrato 📤", use_container_width=True, help="Importar Extrato no formato XLSX"):
     importar_extrato()
 
-# Limpando pontos
-#if st.sidebar.button("🗑️ Limpar pontos"):
-#    st.session_state.pontos = []
-#    st.query_params.clear()
-#    st.rerun()
-
 # Exibir pontos
 if pontos:
     for i, ponto in enumerate(pontos):
         exibir_ponto_com_botoes(ponto, i)
-else:
-    pass
-    ##st.sidebar.info("Nenhum ponto cadastrado ainda.")
 
 # ===============================
 # HTML + JS do Google Maps (ATUALIZADO)
@@ -604,7 +682,7 @@ html_code = f"""
 <head>
 <script src="https://maps.googleapis.com/maps/api/js?key={GOOGLE_MAPS_API_KEY}"></script>
 <script>
-// Função para criar ícone da torre (definida uma vez)
+// Função para criar ícone da torre
 function criarIconeTorre() {{
     const svgString = `
         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
@@ -712,10 +790,10 @@ function initMap() {{
         // Criar polígono do setor
         const sectorPolygon = new google.maps.Polygon({{
             paths: sectorPoints,
-            strokeColor: "#0000FF",
+            strokeColor: "#3c87e8",
             strokeOpacity: 0.5,
             strokeWeight: 1,
-            fillColor: "#0000FF",
+            fillColor: "#3c87e8",
             fillOpacity: 0.35,
             map: map
         }});
@@ -753,6 +831,57 @@ function initMap() {{
         return sectorPolygon;
     }}
 
+    // Função para desenhar círculo
+    function desenharCirculo(p, map) {{
+        const center = {{ lat: p.lat, lng: p.lng }};
+        const radius = p.raio; // raio em metros
+        const {{ dLat, dLng }} = metersToLatLng(radius, p.lat);
+
+        // Criar pontos para o círculo (360 graus)
+        const circlePoints = [];
+        const numPontos = 36; // 36 pontos = 1 ponto a cada 10 graus
+        
+        for (let i = 0; i <= numPontos; i++) {{
+            const angle = (i * 360 / numPontos);
+            const rad = angle * Math.PI / 180;
+            circlePoints.push({{
+                lat: p.lat + dLat * Math.cos(rad),
+                lng: p.lng + dLng * Math.sin(rad)
+            }});
+        }}
+
+        // Criar polígono do círculo
+        const circlePolygon = new google.maps.Polygon({{
+            paths: circlePoints,
+            strokeColor: "#FF6B6B", // vermelho claro
+            strokeOpacity: 0.5,
+            strokeWeight: 2,
+            fillColor: "#FF6B6B", // vermelho claro
+            fillOpacity: 0.35,
+            map: map
+        }});
+
+        // Adicionar ponto central (círculo pequeno)
+        new google.maps.Circle({{
+            center: center,
+            radius: 2, // 2 metros - bem pequeno
+            strokeColor: "#ff0000", // preto para contraste
+            strokeOpacity: 1,
+            strokeWeight: 1,
+            fillColor: "#ff0000", // preto sólido
+            fillOpacity: 1,
+            map: map,
+            zIndex: 1000 // garantir que fique acima do círculo grande
+        }});
+
+        // Adicionar label com o nome e raio
+        const labelText = p.nome + " (" + radius + "m)";
+        const label = new LabelOverlay(center, labelText);
+        label.setMap(map);
+
+        return circlePolygon;
+    }}
+
     // --- Desenhar todos os pontos ---
     points.forEach(p => {{
         const markerPos = new google.maps.LatLng(p.lat, p.lng);
@@ -774,6 +903,10 @@ function initMap() {{
         }} else if (p.tipo === "torre") {{
             // Setor para torres
             desenharSetorTorre(p, map);
+            
+        }} else if (p.tipo === "circulo") {{
+            // Círculo (estilo similar à torre)
+            desenharCirculo(p, map);
         }}
     }});
 
@@ -785,6 +918,9 @@ function initMap() {{
         // Ajustar zoom baseado no tipo do primeiro ponto
         if (primeiroPonto.tipo === "torre") {{
             const zoomLevel = Math.max(10, 16 - Math.log2(primeiroPonto.distancia / 1000));
+            map.setZoom(Math.min(18, Math.max(8, zoomLevel)));
+        }} else if (primeiroPonto.tipo === "circulo") {{
+            const zoomLevel = Math.max(10, 16 - Math.log2(primeiroPonto.raio / 1000));
             map.setZoom(Math.min(18, Math.max(8, zoomLevel)));
         }} else {{
             map.setZoom(14);
@@ -829,5 +965,4 @@ window.addEventListener('resize', function() {{
 """
 
 # Use uma altura grande para garantir que o JavaScript faça o ajuste correto
-components.html(html_code, height=800, scrolling=False)
-
+components.html(html_code, height=700, scrolling=False)
