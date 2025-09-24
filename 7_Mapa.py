@@ -637,7 +637,6 @@ pontos = st.session_state.pontos
 # ===============================
 # Inputs do usuário
 # ===============================
-#st.sidebar.center.title("Gerenciar Pontos")
 st.sidebar.markdown(
     "<h2 style='text-align: center;'>Gerenciar Pontos/Torres</h2>", 
     unsafe_allow_html=True
@@ -661,8 +660,8 @@ with col3:
 if st.sidebar.button("Compartilhar 🔗", use_container_width=True, help="Compartilhar pontos no mapa"):
     compartilhar()
 
-if st.sidebar.button("Importar Extrato 📤", use_container_width=True, help="Importar Extrato no formato XLSX"):
-    importar_extrato()
+#if st.sidebar.button("Importar Extrato 📤", use_container_width=True, help="Importar Extrato no formato XLSX"):
+#    importar_extrato()
 
 # Exibir pontos
 if pontos:
